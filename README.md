@@ -15,3 +15,13 @@ Once the environments are set up, you can start the annotation pipeline by runni
 
 ```bash
 python pipeline.py
+```
+
+## Additional Recommendation
+
+It is **highly recommended** to run this tool on a Linux server.
+Running on Windows may cause unexpected errors such as:
+
+```bash
+NameError: name '_C' is not defined
+```
