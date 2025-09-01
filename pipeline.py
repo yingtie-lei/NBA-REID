@@ -875,7 +875,7 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                 motion_class_inp = gr.Textbox(
                     label="Motion Class",
                     value=DEFAULT_MOTION_CLASS,
-                    placeholder="shooting, dribbling, passing, etc."
+                    placeholder="2points shooting, 3points shooting, freethrow, etc."
                 )
 
             # Processing Settings
