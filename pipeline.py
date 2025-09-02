@@ -58,6 +58,12 @@ ANNOTATIONS_JSON_PATH = os.path.join(DEFAULT_RESULTS_DIR, "annotations.json")
 # Color palette - only light pink for masks
 LIGHT_PINK_COLOR = (255, 182, 193)  # Light pink color for masks
 
+MOTION_CLASS_OPTIONS = [
+    "2points shooting", 
+    "3points shooting",
+    "freethrow",
+    "fadeaway",
+]
 def generate_colors(n):
     """Generate n distinct colors"""
     colors = []
@@ -872,10 +878,11 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                     value=DEFAULT_PLAYER_NAME,
                     placeholder="Enter player name"
                 )
-                motion_class_inp = gr.Textbox(
+                motion_class_inp = gr.Dropdown(
+                    choices=MOTION_CLASS_OPTIONS,
                     label="Motion Class",
-                    value=DEFAULT_MOTION_CLASS,
-                    placeholder="2points shooting, 3points shooting, freethrow, etc."
+                    value="shooting",
+                    interactive=True
                 )
 
             # Processing Settings
@@ -892,18 +899,18 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                     reset_selection_btn = gr.Button("Clear Selection", variant="secondary")
                     reset_models_btn = gr.Button("Reset Models", variant="secondary")
 
-            # Frame Correction Controls
-            with gr.Group(elem_classes=["info-card"]):
-                gr.Markdown("### Frame Correction")
-                frame_slider = gr.Slider(value=0, minimum=0, maximum=0, step=1, label="Frame Index")
-                point_label_radio = gr.Radio(
-                    choices=[("Positive (Include)", 1), ("Negative (Exclude)", 0)], 
-                    value=1, 
-                    label="Point Type"
-                )
-                with gr.Row():
-                    clear_points_btn = gr.Button("Clear Points", variant="secondary")
-                    apply_points_btn = gr.Button("Apply Points", variant="primary")
+            # # Frame Correction Controls
+            # with gr.Group(elem_classes=["info-card"]):
+            #     gr.Markdown("### Frame Correction")
+            #     frame_slider = gr.Slider(value=0, minimum=0, maximum=0, step=1, label="Frame Index")
+            #     point_label_radio = gr.Radio(
+            #         choices=[("Positive (Include)", 1), ("Negative (Exclude)", 0)], 
+            #         value=1, 
+            #         label="Point Type"
+            #     )
+            #     with gr.Row():
+            #         clear_points_btn = gr.Button("Clear Points", variant="secondary")
+            #         apply_points_btn = gr.Button("Apply Points", variant="primary")
 
         # Right Column - Display and Results (Made Larger)
         with gr.Column(scale=3, elem_classes=["right-column"]):
@@ -925,26 +932,54 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
 
             # Preview and Correction
             with gr.Group(elem_classes=["info-card"]):
-                gr.Markdown("### Preview & Interactive Correction")
+                gr.Markdown("### Current Frame Preview")
+                preview_img = gr.Image(
+                    label="Current Frame with Segmentation",
+                    interactive=False,
+                    height=400
+                )
+
+            # Frame Control and Interactive Correction - 新的集成部分
+            with gr.Group(elem_classes=["info-card"]):
+                gr.Markdown("### Frame Control & Interactive Correction")
                 
-                with gr.Tab("Current Preview"):
-                    preview_img = gr.Image(
-                        label="Current Frame Preview",
-                        interactive=False,
-                        height=500
+                # Frame navigation
+                with gr.Row():
+                    frame_slider = gr.Slider(
+                        value=0, 
+                        minimum=0, 
+                        maximum=0, 
+                        step=1, 
+                        label="Frame Index",
+                        scale=3
                     )
+                    with gr.Column(scale=1):
+                        gr.Markdown("**Point Type**")
+                        point_label_radio = gr.Radio(
+                            choices=[("✓ Include", 1), ("✗ Exclude", 0)], 
+                            value=1, 
+                            label="",
+                            container=False
+                        )
                 
-                with gr.Tab("Interactive Correction"):
-                    interact_img = gr.Image(
-                        label="Click to Add Correction Points",
-                        interactive=True,
-                        height=500
-                    )
+                # Interactive correction image
+                interact_img = gr.Image(
+                    label="Click to Add Correction Points (Green=Include, Red=Exclude)",
+                    interactive=True,
+                    height=400
+                )
+                
+                # Point status and controls
+                with gr.Row():
                     pending_info = gr.Textbox(
-                        label="Pending Points",
+                        label="Pending Points Status",
                         interactive=False,
-                        placeholder="No pending points"
+                        placeholder="No pending points",
+                        scale=2
                     )
+                    with gr.Column(scale=1):
+                        clear_points_btn = gr.Button("Clear Points", variant="secondary", size="sm")
+                        apply_points_btn = gr.Button("Apply Points", variant="primary", size="sm")
 
             # Results
             with gr.Group(elem_classes=["info-card"]):
@@ -1143,37 +1178,36 @@ Total Frames: {info['frame_count']}
         outputs=[preview_img, st_infer_state, st_segments, st_points, download_json, results_info]
     )
 
-    # Render interactive image for frame correction
-    def render_correction_image(frames_dir, frame_names, segments, cur_idx, alpha, pending_points_dict):
+    # Update both preview and interaction images when slider changes
+    def on_frame_change(frames_dir, frame_names, segments, cur_idx, alpha, pending_points_dict):
         if not frame_names:
-            return None, "Please complete previous steps first."
+            return None, None, "Please complete previous steps first."
         
         cur_idx = int(cur_idx)
         rgb = read_image_rgb(os.path.join(frames_dir, frame_names[cur_idx]))
 
-        # Overlay existing mask with light pink color
+        # Create preview image (for preview_img)
+        preview_canvas = rgb.copy()
         if segments and (cur_idx in segments) and segments[cur_idx]:
             seg = segments[cur_idx]
             mask = np.squeeze(seg[min(seg.keys())]).astype(bool)
-            canvas = annotate_colorful_mask_on_image(rgb, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
-        else:
-            canvas = rgb
+            preview_canvas = annotate_colorful_mask_on_image(preview_canvas, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
 
-        # Draw pending points
+        # Create interaction image (for interact_img) - same as preview but with pending points
+        interact_canvas = preview_canvas.copy()
         pts, labs = [], []
         if pending_points_dict and (cur_idx in pending_points_dict):
             pts = pending_points_dict[cur_idx].get("pts", [])
             labs = pending_points_dict[cur_idx].get("labs", [])
-            canvas = annotate_points(canvas, pts, labs)
+            interact_canvas = annotate_points(interact_canvas, pts, labs)
 
-        info_text = f"Frame {cur_idx}: {len(pts)} pending points"
-        return canvas, info_text
+        info_text = f"Frame {cur_idx}/{len(frame_names)-1}: {len(pts)} pending correction points"
+        return preview_canvas, interact_canvas, info_text
 
-    # Update display when slider changes
     frame_slider.change(
-        fn=render_correction_image,
+        fn=on_frame_change,
         inputs=[st_frames_dir, st_frame_names, st_segments, frame_slider, alpha_inp, st_points],
-        outputs=[interact_img, pending_info]
+        outputs=[preview_img, interact_img, pending_info]
     )
 
     # Add correction point
