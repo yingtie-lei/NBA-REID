@@ -56,7 +56,7 @@ DEFAULT_RESULTS_DIR = "./Results"
 ANNOTATIONS_JSON_PATH = os.path.join(DEFAULT_RESULTS_DIR, "annotations.json")
 
 # Color palette - only light pink for masks
-LIGHT_PINK_COLOR = (255, 182, 193)  # Light pink color for masks
+LIGHT_PINK_COLOR = (193, 182, 255)  # Light pink color for masks
 
 MOTION_CLASS_OPTIONS = [
     "2points shooting", 
@@ -143,19 +143,19 @@ def get_video_info(video_path: str) -> Dict:
 def get_annotators():
     """Create annotators based on supervision version"""
     try:
-        bbox_annotator = sv.BoxAnnotator(color=sv.Color.RED, thickness=3)
+        bbox_annotator = sv.BoxAnnotator(color=sv.Color(0,0,255), thickness=3)
         selected_bbox_annotator = sv.BoxAnnotator(color=sv.Color.GREEN, thickness=5)
     except AttributeError:
         try:
-            bbox_annotator = sv.BoundingBoxAnnotator(color=sv.Color.RED, thickness=3)
+            bbox_annotator = sv.BoundingBoxAnnotator(color=sv.Color(0,0,255), thickness=3)
             selected_bbox_annotator = sv.BoundingBoxAnnotator(color=sv.Color.GREEN, thickness=5)
         except AttributeError:
-            bbox_annotator = sv.RoundBoxAnnotator(color=sv.Color.RED, thickness=3)
+            bbox_annotator = sv.RoundBoxAnnotator(color=sv.Color(0,0,255), thickness=3)
             selected_bbox_annotator = sv.RoundBoxAnnotator(color=sv.Color.GREEN, thickness=5)
 
     try:
         label_annotator = sv.LabelAnnotator(
-            color=sv.Color.RED, text_color=sv.Color.WHITE,
+            color=sv.Color(0,0,255), text_color=sv.Color.WHITE,
             text_scale=0.7, text_thickness=2, text_padding=8, border_radius=5
         )
         selected_label_annotator = sv.LabelAnnotator(
@@ -176,12 +176,12 @@ def get_annotators():
             color=sv.Color.GREEN, radius=10, outline_color=sv.Color.BLACK, outline_thickness=3
         )
         negative_dot_annotator = sv.DotAnnotator(
-            color=sv.Color.RED, radius=10, outline_color=sv.Color.BLACK, outline_thickness=3
+            color=sv.Color(0,0,255), radius=10, outline_color=sv.Color.BLACK, outline_thickness=3
         )
     except (AttributeError, TypeError):
         try:
             positive_dot_annotator = sv.CircleAnnotator(color=sv.Color.GREEN)
-            negative_dot_annotator = sv.CircleAnnotator(color=sv.Color.RED)
+            negative_dot_annotator = sv.CircleAnnotator(color=sv.Color(0,0,255))
         except AttributeError:
             positive_dot_annotator = None
             negative_dot_annotator = None
@@ -260,7 +260,7 @@ def annotate_detections_with_labels(image: np.ndarray,
             annotated_image = label_annotator.annotate(scene=annotated_image, detections=unselected_detections, labels=unselected_labels)
         
         selected_detection = detections[selected_idx:selected_idx+1]
-        selected_label = [f"{selected_idx}: {labels[selected_idx]} ✓"]
+        selected_label = [f"{selected_idx}: {labels[selected_idx]}"]
         
         annotated_image = selected_bbox_annotator.annotate(scene=annotated_image, detections=selected_detection)
         annotated_image = selected_label_annotator.annotate(scene=annotated_image, detections=selected_detection, labels=selected_label)
@@ -357,11 +357,11 @@ def annotate_points(rgb_img: np.ndarray, points: List[Tuple[int, int]], labels: 
                 annotated_image = negative_dot_annotator.annotate(scene=annotated_image, detections=neg_detections)
             except (AttributeError, TypeError):
                 for x, y in neg_points_array:
-                    cv2.circle(annotated_image, (int(x), int(y)), 10, (255, 0, 0), -1, cv2.LINE_AA)
+                    cv2.circle(annotated_image, (int(x), int(y)), 10, (0, 0, 255), -1, cv2.LINE_AA)
                     cv2.circle(annotated_image, (int(x), int(y)), 12, (0, 0, 0), 3, cv2.LINE_AA)
     else:
         for (x, y), lab in zip(points, labels):
-            color = (0, 255, 0) if lab == 1 else (255, 0, 0)
+            color = (0, 255, 0) if lab == 1 else (0, 0, 255)
             cv2.circle(annotated_image, (int(x), int(y)), 10, color, -1, cv2.LINE_AA)
             cv2.circle(annotated_image, (int(x), int(y)), 12, (0, 0, 0), 3, cv2.LINE_AA)
     
@@ -922,7 +922,7 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                 det_img = gr.Image(
                     label="First Frame Detection (Click to Select Target)",
                     interactive=True,
-                    height=500
+                    height=700
                 )
                 selection_info = gr.Textbox(
                     label="Selection Status",
@@ -936,7 +936,7 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                 preview_img = gr.Image(
                     label="Current Frame with Segmentation",
                     interactive=False,
-                    height=400
+                    height=600
                 )
 
             # Frame Control and Interactive Correction - 新的集成部分
@@ -966,7 +966,7 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                 interact_img = gr.Image(
                     label="Click to Add Correction Points (Green=Include, Red=Exclude)",
                     interactive=True,
-                    height=400
+                    height=700
                 )
                 
                 # Point status and controls
@@ -1021,11 +1021,11 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                 return "Could not read video information. Please check the file path."
             
             info_text = f"""
-Video: {os.path.basename(video_path)}
-Duration: {info['duration']:.2f} seconds
-FPS: {info['fps']:.2f}
-Resolution: {info['width']} x {info['height']}
-Total Frames: {info['frame_count']}
+            Video: {os.path.basename(video_path)}
+            Duration: {info['duration']:.2f} seconds
+            FPS: {info['fps']:.2f}
+            Resolution: {info['width']} x {info['height']}
+            Total Frames: {info['frame_count']}
             """.strip()
             return info_text
         except Exception as e:
@@ -1244,29 +1244,43 @@ Total Frames: {info['frame_count']}
     )
 
     # Clear points
-    def on_clear_correction_points(cur_idx, pending_points_dict):
+    def on_clear_correction_points(frames_dir, frame_names, cur_idx, pending_points_dict, segments, alpha):
         cur_idx = int(cur_idx)
         if pending_points_dict and (cur_idx in pending_points_dict):
             pending_points_dict[cur_idx] = {"pts": [], "labs": []}
-        return pending_points_dict, f"Cleared all pending points for frame {cur_idx}."
+        
+        # Refresh interactive image without points
+        if frame_names:
+            rgb = read_image_rgb(os.path.join(frames_dir, frame_names[cur_idx]))
+            interact_canvas = rgb.copy()
+            
+            # Add mask overlay if exists
+            if segments and (cur_idx in segments) and segments[cur_idx]:
+                seg = segments[cur_idx]
+                mask = np.squeeze(seg[min(seg.keys())]).astype(bool)
+                interact_canvas = annotate_colorful_mask_on_image(interact_canvas, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
+        else:
+            interact_canvas = None
+        
+        return pending_points_dict, f"Cleared all pending points for frame {cur_idx}.", interact_canvas
 
     clear_points_btn.click(
         fn=on_clear_correction_points,
-        inputs=[frame_slider, st_points],
-        outputs=[st_points, pending_info]
+        inputs=[st_frames_dir, st_frame_names, frame_slider, st_points, st_segments, alpha_inp],
+        outputs=[st_points, pending_info, interact_img]
     )
 
     # Apply correction points
     def on_apply_correction_points(frames_dir, frame_names, cur_idx, pending_points_dict, 
-                                 infer_state, segments, obj_id, alpha, video_name, 
-                                 player_name, motion_class, selected_box, video_info, output_base_dir):
+                             infer_state, segments, obj_id, alpha, video_name, 
+                             player_name, motion_class, selected_box, video_info, output_base_dir):
         try:
             if infer_state is None or not segments:
                 raise gr.Error("Please complete initial segmentation first.")
 
             cur_idx = int(cur_idx)
             if not pending_points_dict or (cur_idx not in pending_points_dict) or \
-               (len(pending_points_dict[cur_idx].get("pts", [])) == 0):
+            (len(pending_points_dict[cur_idx].get("pts", [])) == 0):
                 raise gr.Error("No pending points for this frame.")
 
             pts = np.array(pending_points_dict[cur_idx]["pts"], dtype=np.float32)
@@ -1297,13 +1311,16 @@ Total Frames: {info['frame_count']}
                 seg = new_segments[cur_idx]
                 mask = np.squeeze(seg[min(seg.keys())]).astype(bool)
                 preview = annotate_colorful_mask_on_image(rgb, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
+                # Create clean interactive image without points
+                interact_canvas = preview.copy()
             else:
                 preview = rgb
+                interact_canvas = rgb.copy()
 
             result_msg = f"Applied {len(pts)} correction points and re-propagated. Updated {exported_count} frames and binary masks."
             gr.Info("Re-propagation completed successfully!")
             
-            return preview, new_segments, pending_points_dict, json_path, result_msg, f"Frame {cur_idx}: cleared pending points"
+            return preview, interact_canvas, new_segments, pending_points_dict, json_path, result_msg, f"Frame {cur_idx}: cleared pending points"
         except Exception as e:
             tb = traceback.format_exc()
             raise gr.Error(f"Re-propagation failed: {e}\n{tb}")
@@ -1315,7 +1332,7 @@ Total Frames: {info['frame_count']}
             st_segments, st_obj_id, alpha_inp, st_video_name, player_name_inp, 
             motion_class_inp, st_selected_box, st_video_info, output_base_dir_inp
         ],
-        outputs=[preview_img, st_segments, st_points, download_json, results_info, pending_info]
+        outputs=[preview_img, interact_img, st_segments, st_points, download_json, results_info, pending_info]
     )
 
 if __name__ == "__main__":
