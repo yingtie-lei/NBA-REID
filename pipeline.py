@@ -1128,14 +1128,15 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
 
     # Step 2: Run segmentation
     def on_run_segmentation(frames_dir, frame_names, boxes, labels, selected_idx, selected_label, 
-                           selected_box, video_name, player_name, motion_class, alpha, video_info, output_base_dir):
+                       selected_box, video_name, player_name, motion_class, alpha, video_info, output_base_dir):
         try:
-            # Fix the validation check for numpy arrays
+            # Validate input parameters
             if not (boxes is not None and labels is not None and frame_names is not None and selected_idx is not None):
                 raise gr.Error("Please complete video processing and object selection first.")
 
             gr.Info("Starting segmentation and tracking...")
             
+            # Run initial segmentation and tracking
             infer_state, segments = initial_propagate_with_selected_box(
                 frames_dir, list(frame_names), np.array(boxes, dtype=np.float32), 
                 list(labels), int(selected_idx)
@@ -1144,21 +1145,24 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
             # Get fps from video info
             fps = video_info.get('original_fps', 30.0) if video_info else 30.0
             
-            # Export results
+            # Export results to disk
             exported_count, json_path = export_results(
                 segments, frames_dir, list(frame_names), output_base_dir or DEFAULT_RESULTS_DIR, 
                 video_name, player_name, motion_class, fps, selected_box
             )
 
-            # Preview current frame with light pink mask
+            # Preview current frame - display binary mask
             cur_idx = 0
-            rgb = read_image_rgb(os.path.join(frames_dir, frame_names[cur_idx]))
             seg = segments.get(cur_idx, {})
             if seg:
                 mask = np.squeeze(seg[min(seg.keys())]).astype(bool)
-                preview = annotate_colorful_mask_on_image(rgb, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
+                # Create binary preview
+                binary_mask = mask.astype(np.uint8) * 255
+                preview = np.stack([binary_mask, binary_mask, binary_mask], axis=-1)
             else:
-                preview = rgb
+                # If no mask, display black image
+                rgb = read_image_rgb(os.path.join(frames_dir, frame_names[cur_idx]))
+                preview = np.zeros_like(rgb)
 
             result_msg = f"Segmentation completed! Exported {exported_count} frames and binary masks to {output_base_dir}/{video_name}"
             gr.Info("Segmentation and tracking completed successfully!")
@@ -1186,15 +1190,25 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
         cur_idx = int(cur_idx)
         rgb = read_image_rgb(os.path.join(frames_dir, frame_names[cur_idx]))
 
-        # Create preview image (for preview_img)
-        preview_canvas = rgb.copy()
+        # Create preview image - display pure binary mask
         if segments and (cur_idx in segments) and segments[cur_idx]:
             seg = segments[cur_idx]
             mask = np.squeeze(seg[min(seg.keys())]).astype(bool)
-            preview_canvas = annotate_colorful_mask_on_image(preview_canvas, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
+            # Create binary preview: white=mask area, black=background
+            binary_mask = mask.astype(np.uint8) * 255
+            preview_canvas = np.stack([binary_mask, binary_mask, binary_mask], axis=-1)
+        else:
+            # If no mask, display black image
+            preview_canvas = np.zeros_like(rgb)
 
-        # Create interaction image (for interact_img) - same as preview but with pending points
-        interact_canvas = preview_canvas.copy()
+        # Create interaction image - keep colored overlay for easier interaction
+        interact_canvas = rgb.copy()
+        if segments and (cur_idx in segments) and segments[cur_idx]:
+            seg = segments[cur_idx]
+            mask = np.squeeze(seg[min(seg.keys())]).astype(bool)
+            interact_canvas = annotate_colorful_mask_on_image(interact_canvas, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
+
+        # Add pending points to interaction canvas
         pts, labs = [], []
         if pending_points_dict and (cur_idx in pending_points_dict):
             pts = pending_points_dict[cur_idx].get("pts", [])
@@ -1275,6 +1289,7 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
                              infer_state, segments, obj_id, alpha, video_name, 
                              player_name, motion_class, selected_box, video_info, output_base_dir):
         try:
+            # Validate prerequisites
             if infer_state is None or not segments:
                 raise gr.Error("Please complete initial segmentation first.")
 
@@ -1283,12 +1298,13 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
             (len(pending_points_dict[cur_idx].get("pts", [])) == 0):
                 raise gr.Error("No pending points for this frame.")
 
+            # Prepare correction points
             pts = np.array(pending_points_dict[cur_idx]["pts"], dtype=np.float32)
             labs = np.array(pending_points_dict[cur_idx]["labs"], dtype=np.int32)
 
             gr.Info("Re-propagating with correction points...")
             
-            # Re-propagate
+            # Re-propagate segmentation with correction points
             new_segments = repropagate_with_points(
                 frames_dir, cur_idx, pts, labs, infer_state, int(obj_id)
             )
@@ -1296,25 +1312,27 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
             # Get fps from video info
             fps = video_info.get('original_fps', 30.0) if video_info else 30.0
 
-            # Re-export results
+            # Re-export updated results
             exported_count, json_path = export_results(
                 new_segments, frames_dir, list(frame_names), output_base_dir or DEFAULT_RESULTS_DIR, 
                 video_name, player_name, motion_class, fps, selected_box
             )
 
-            # Clear pending points
+            # Clear pending points after successful application
             pending_points_dict[cur_idx] = {"pts": [], "labs": []}
 
-            # Update preview with light pink mask
+            # Update preview - display binary mask
             rgb = read_image_rgb(os.path.join(frames_dir, frame_names[cur_idx]))
             if new_segments and (cur_idx in new_segments) and new_segments[cur_idx]:
                 seg = new_segments[cur_idx]
                 mask = np.squeeze(seg[min(seg.keys())]).astype(bool)
-                preview = annotate_colorful_mask_on_image(rgb, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
-                # Create clean interactive image without points
-                interact_canvas = preview.copy()
+                # Create binary preview
+                binary_mask = mask.astype(np.uint8) * 255
+                preview = np.stack([binary_mask, binary_mask, binary_mask], axis=-1)
+                # Create clean interactive image with colored overlay for interaction
+                interact_canvas = annotate_colorful_mask_on_image(rgb, mask, color=LIGHT_PINK_COLOR, alpha=float(alpha))
             else:
-                preview = rgb
+                preview = np.zeros_like(rgb)
                 interact_canvas = rgb.copy()
 
             result_msg = f"Applied {len(pts)} correction points and re-propagated. Updated {exported_count} frames and binary masks."
@@ -1336,4 +1354,4 @@ with gr.Blocks(title="NBA Re-id Annotation Pipeline", theme="soft", css=create_c
     )
 
 if __name__ == "__main__":
-    demo.queue(max_size=10).launch(server_name="0.0.0.0", server_port=7860, share=False)
+    demo.queue(max_size=10).launch(server_name="0.0.0.0", server_port=7861, share=False)
