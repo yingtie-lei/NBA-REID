@@ -404,7 +404,7 @@ def save_annotations_to_json(video_segments: Dict[int, Dict[int, np.ndarray]],
     
     print("Start dumping the annotation...")
     
-    # Use the provided output base directory
+    # Use the provided output base directory for the central annotations.json
     annotations_json_path = os.path.join(output_base_dir, "annotations.json")
     
     # Ensure output directory exists
@@ -422,13 +422,16 @@ def save_annotations_to_json(video_segments: Dict[int, Dict[int, np.ndarray]],
             print(f"Warning: Could not load existing annotations: {e}")
             existing_annotations = []
     
-    # Filter out annotations from the current video (to overwrite them)
+    # Filter out annotations from the current video and player (to overwrite them)
     filtered_annotations = []
     if existing_annotations:
         for annotation in existing_annotations:
-            if annotation.get("video_name") != video_name:
+            if not (annotation.get("video_name") == video_name and 
+                   annotation.get("annotations") and 
+                   len(annotation["annotations"]) > 0 and
+                   annotation["annotations"][0].get("player_name") == player_name):
                 filtered_annotations.append(annotation)
-        print(f"Removed {len(existing_annotations) - len(filtered_annotations)} existing annotations for video '{video_name}'")
+        print(f"Removed {len(existing_annotations) - len(filtered_annotations)} existing annotations for video '{video_name}' and player '{player_name}'")
     
     # Process each frame for the current video
     new_annotations = []
@@ -442,6 +445,16 @@ def save_annotations_to_json(video_segments: Dict[int, Dict[int, np.ndarray]],
         else:
             frame_name = frame_names[frame_idx]
             frame_path = os.path.join(frames_dir, frame_name)
+        
+        # Convert absolute path to relative path from output_base_dir
+        try:
+            # Get relative path from output_base_dir
+            relative_frame_path = os.path.relpath(frame_path, output_base_dir)
+            # Normalize path separators for consistency
+            relative_frame_path = relative_frame_path.replace(os.path.sep, '/')
+        except ValueError:
+            # If relative path calculation fails, use the full path
+            relative_frame_path = frame_path
         
         # Read image to get dimensions
         try:
@@ -494,9 +507,10 @@ def save_annotations_to_json(video_segments: Dict[int, Dict[int, np.ndarray]],
         # Convert masks to RLE format
         mask_rles = [single_mask_to_rle(mask) for mask in masks]
         
-        # Create annotation for this frame
+        relative_mask_path = relative_frame_path.replace('/frames/', '/masks/').replace('frame_', 'mask_')
         frame_annotation = {
-            "image_path": frame_path,
+            "frame_path": relative_frame_path,
+            "mask_path": relative_mask_path,    
             "video_name": video_name,
             "fps": fps,
             "annotations": [
@@ -522,8 +536,8 @@ def save_annotations_to_json(video_segments: Dict[int, Dict[int, np.ndarray]],
     with open(annotations_json_path, "w") as f:
         json.dump(final_annotations, f, indent=4)
     
-    print(f'Added {len(new_annotations)} new annotations for video "{video_name}"')
-    print(f'Total annotations in file: {len(final_annotations)} (from {len(set([ann.get("video_name", "unknown") for ann in final_annotations]))} videos)')
+    print(f'Added {len(new_annotations)} new annotations for video "{video_name}" and player "{player_name}"')
+    print(f'Total annotations in file: {len(final_annotations)} (from {len(set([(ann.get("video_name", "unknown"), ann["annotations"][0].get("player_name", "unknown") if ann.get("annotations") else "unknown") for ann in final_annotations]))} video-player combinations)')
     print(f'Annotations have been saved to "{annotations_json_path}"')
     
     return annotations_json_path
@@ -537,10 +551,11 @@ def export_results(video_segments: Dict[int, Dict[int, np.ndarray]],
                   motion_class: str,
                   fps: float,
                   selected_box: np.ndarray = None):
-    """Export frames and binary masks to organized folder structure"""
+    """Export frames and binary masks to organized folder structure under player name"""
     
-    # Create main output directory for this video
-    video_output_dir = os.path.join(output_base_dir, video_name)
+    # Create directory structure: output_base_dir/player_name/video_name/
+    player_output_dir = os.path.join(output_base_dir, player_name if player_name.strip() else "unknown_player")
+    video_output_dir = os.path.join(player_output_dir, video_name)
     frames_output_dir = os.path.join(video_output_dir, "frames")
     masks_output_dir = os.path.join(video_output_dir, "masks")
     
