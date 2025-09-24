@@ -62,7 +62,6 @@ MOTION_CLASS_OPTIONS = [
     "2points shooting", 
     "3points shooting",
     "freethrow",
-    "fadeaway",
 ]
 def generate_colors(n):
     """Generate n distinct colors"""
